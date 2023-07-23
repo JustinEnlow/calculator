@@ -1,9 +1,18 @@
 //! Command Line Calculator, based on Shunting Yard algorithm.
 //! does not implement order of operations. user should define their own order
 //! of operations using parentheses.
+ 
+mod token;
 
-pub fn calculate(input: &str) -> String{
+use token::Token;
+
+
+
+pub fn calculate(input: &str) -> String{    // switch to Result<f32, Error> for error handling
     let tokens = tokenize(input);
+    if tokens.is_empty(){
+        return format!("Empty or invalid input string.")
+    }
     let postfix_tokens = to_postfix_tokens(tokens);
     match evaluate(postfix_tokens){
         Ok(ok) => format!("{ok}"),
@@ -11,23 +20,11 @@ pub fn calculate(input: &str) -> String{
     }
 }
 
-// this or can also use reg expressions to match char as floating point digit [\d.]
-fn is_floating_point_digit(char: char) -> bool{
-    if char.is_ascii_digit() || char == '.'{
-        return true;
-    }
-
-    false
-}
-
 fn tokenize(input: &str) -> Vec<Token>{
-    //let mut last_char_was_number = false;
     let mut num_string = String::new();
     let mut tokens: Vec<Token> = Vec::new();
     
     for char in input.chars(){
-        // can we replace 'last_char_was_number' with '!num_string.is_empty()'? ...seems that we can
-        //if last_char_was_number && !is_floating_point_digit(char){
         if !num_string.is_empty() && !is_floating_point_digit(char){
             tokens.push(Token::Number(parse_num_string(&num_string)));
             num_string.clear();
@@ -38,14 +35,14 @@ fn tokenize(input: &str) -> Vec<Token>{
             '+' => tokens.push(Token::AddOp),
             '-' => {
                 match tokens.last(){
-                    // if no previous token, this '-' is a negative sign
-                    None => num_string.push(char),
                     Some(prev_token) => match prev_token{
                         // if previous token was a number or close paren, this '-' is a subtraction
                         Token::Number(_) | Token::CloseParen => tokens.push(Token::SubOp), 
                         // otherwise, it is a negative
                         _ => num_string.push(char)
-                    }
+                    },
+                    // if no previous token, this '-' is a negative sign
+                    None => num_string.push(char)
                 }
             },
             '*' => tokens.push(Token::MulOp),
@@ -54,8 +51,6 @@ fn tokenize(input: &str) -> Vec<Token>{
             ')' => tokens.push(Token::CloseParen),
             _ => {}
         }
-
-        //last_char_was_number = is_floating_point_digit(char);
     }
 
     // push num_string to tokens and clear num_string if we have reached the end of the input string
@@ -67,13 +62,17 @@ fn tokenize(input: &str) -> Vec<Token>{
     tokens
 }
 
+// this or can also use reg expressions to match char as floating point digit [\d.]
+fn is_floating_point_digit(char: char) -> bool{
+    if char.is_ascii_digit() || char == '.'{
+        return true;
+    }
+    else{
+        return false;
+    }
+}
+
 fn parse_num_string(num_string: &str) -> f32{
-    // this bit of code is our older style, handled at each location this function is now called
-    //match num_string.parse(){
-    //    Ok(val) => tokens.push(Token::Number(val)),
-    //    _ => {numbers validated previously. should not fail to parse.}
-    //}
-    // end of older code
     match num_string.parse(){
         Ok(val) => val,
         _ => unreachable!("numbers validated previously. should not fail to parse.")
@@ -81,29 +80,26 @@ fn parse_num_string(num_string: &str) -> f32{
 }
 
 /// converts tokens to reverse polish/postfix notation
-fn to_postfix_tokens(tokens: Vec<Token>) -> Vec<Token>{ // -> Result<Vec<Token>, Err>
+fn to_postfix_tokens(tokens: Vec<Token>) -> Vec<Token>{
     let mut output = Vec::new();
     let mut operations = Vec::new();
     
     for token in tokens{
         match token{
-            Token::Number(_) => output.push(token),
+            Token::Number(_) => output.push(token), 
             Token::CloseParen => {
                 loop{
                     match operations.last(){
                         Some(&last_token) => {
                             if last_token == Token::OpenParen{
-                                match operations.pop(){
-                                    Some(_) => {},
-                                    None => {println!("missing '(' in operator stack")} // make actual error later
-                                }
+                                operations.pop().unwrap();
                                 break;
                             }
                             else{
                                 output.push(operations.pop().unwrap());   
                             }
                         },
-                        None => break
+                        None => break //inform user of unbalanced paren use?
                     }
                 }
             },
@@ -157,41 +153,13 @@ fn evaluate(tokens: Vec<Token>) -> Result<f32, String>{
     
     match num_stack.pop(){
         Some(x) => {Ok(x)},
-        None => {Err("token stack is empty. cannot evaluate an empty stack. double check that input is numerical and non empty".to_string())}
+        // can be reached if input equation is unbalanced. ex: 2 +
+        None => unimplemented!("unimplemented")
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
-enum Token{
-    Number(f32),
-    AddOp,
-    SubOp,
-    MulOp,
-    DivOp,
-    OpenParen,
-    CloseParen,
-}
-impl std::fmt::Debug for Token{
-    fn fmt(self: &Self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result{
-        match *self{
-            Token::Number(char) => write!(f, "Number({})", char),
-            Token::AddOp => write!(f, "AddOp"),
-            Token::SubOp => write!(f, "SubOp"),
-            Token::MulOp => write!(f, "MulOp"),
-            Token::DivOp => write!(f, "DivOp"),
-            Token::OpenParen => write!(f, "OpenParen"),
-            Token::CloseParen => write!(f, "CloseParen"),
-        }
-    }
-}
-// figure out how to manually implement partial equivalence
-//impl std::cmp::PartialEq for Token{
-//    fn eq(&self, other: &Self) -> bool {}
-//    fn ne(&self, other: &Self) -> bool {}
-//}
 
-
-
+///////////////////////////////////////////////////////////////////////////////
 
 
 #[test]
@@ -206,6 +174,24 @@ fn integer_operation(){
     let shunting_yard_result = to_postfix_tokens(lexer_result);
     println!("shunting yard result: {:?}", shunting_yard_result);
     assert!(shunting_yard_result == vec![Token::Number(2.0), Token::Number(2.0), Token::AddOp]);
+
+    let result = calculate(input);
+    println!("result: {:?}", result);
+    assert!(result == "4");
+}
+
+#[test]
+fn negatives(){
+    let input = "-2 * -2";
+    println!("input: {:?}", input);
+
+    let lexer_result = tokenize(input);
+    println!("lexer result: {:?}", lexer_result);
+    assert!(lexer_result == vec![Token::Number(-2.0), Token::MulOp, Token::Number(-2.0)]);
+
+    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    println!("shunting yard result: {:?}", shunting_yard_result);
+    assert!(shunting_yard_result == vec![Token::Number(-2.0), Token::Number(-2.0), Token::MulOp]);
 
     let result = calculate(input);
     println!("result: {:?}", result);
@@ -228,79 +214,6 @@ fn balanced_parens(){
     let result = calculate(input);
     println!("result: {:?}", result);
     assert!(result == "18");
-}
-
-#[test]
-fn negatives(){
-    let input = "-2 * -2";
-    println!("input: {:?}", input);
-
-    let lexer_result = tokenize(input);
-    println!("lexer result: {:?}", lexer_result);
-    assert!(lexer_result == vec![Token::Number(-2.0), Token::MulOp, Token::Number(-2.0)]);
-
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
-    println!("shunting yard result: {:?}", shunting_yard_result);
-    assert!(shunting_yard_result == vec![Token::Number(-2.0), Token::Number(-2.0), Token::MulOp]);
-
-    let result = calculate(input);
-    println!("result: {:?}", result);
-    assert!(result == "4");
-}
-
-// figure out how to make this work properly
-#[test]
-fn twos(){
-    let input = vec![
-        Token::Number(2.0),
-        Token::AddOp,
-        Token::Number(2.0),
-        Token::SubOp,
-        Token::Number(2.0)
-    ];
-    let output = to_postfix_tokens(input);
-    println!("{:#?}", output);
-    assert!(output == vec![
-        Token::Number(2.0),
-        Token::Number(2.0),
-        Token::AddOp,
-        Token::Number(2.0),
-        Token::SubOp
-    ]);
-}
-
-// feature, not a bug. should fail, because i have elected not to assume operator precedence
-// how can we code this so that equal precedence operators don't need parens. ex: 2 + 2 + 2
-#[test]
-#[should_panic]
-fn david_test(){
-    // (-1 + 2) - 3 * 4 / 5
-    let input = vec![
-        Token::OpenParen,
-        Token::Number(-1.0),
-        Token::AddOp,
-        Token::Number(2.0),
-        Token::CloseParen,
-        Token::SubOp,
-        Token::Number(3.0),
-        Token::MulOp,
-        Token::Number(4.0),
-        Token::DivOp,
-        Token::Number(5.0)
-    ];
-    let output = to_postfix_tokens(input);
-    println!("{:#?}", output);
-    assert!(output == vec![
-        Token::Number(-1.0),
-        Token::Number(2.0),
-        Token::AddOp,
-        Token::Number(3.0),
-        Token::SubOp,
-        Token::Number(4.0),
-        Token::MulOp,
-        Token::Number(5.0),
-        Token::DivOp
-    ]);
 }
 
 #[test]
@@ -332,6 +245,86 @@ fn paren_in_paren(){
         Token::DivOp
     ]);
 }
+
+// may need to implement precedence
+// better test is 2 - 3 + 4. expect 3, result is -5
+#[test]
+fn left_to_right_solving(){
+    let input = "2 - 3 + 4";
+    println!("{:?}", input);
+
+    let lexer_result = tokenize(input);
+    println!("{:?}", lexer_result);
+    assert!(lexer_result == vec![
+        Token::Number(2.0),
+        Token::SubOp,
+        Token::Number(3.0),
+        Token::AddOp,
+        Token::Number(4.0)
+    ]);
+
+    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    println!("{:#?}", shunting_yard_result);
+    assert!(shunting_yard_result == vec![
+        Token::Number(2.0),
+        Token::Number(3.0),
+        Token::Number(4.0),
+        Token::AddOp,
+        Token::SubOp,
+    ]);
+
+    let result = calculate(input);
+    println!("{:?}", result);
+    assert!(result == "3")
+}
+
+#[test]
+fn idk(){
+    let input = "2 + -3 + 4";
+    let result = calculate(input);
+    assert!(result == "3");
+}
+
+// reconsider this test once previous is working correctly
+//#[test]
+//fn david_test(){
+//    let input = "(-1 + 2) - 3 * 5 / 5";
+//    println!("{:?}", input);
+//
+//    let lexer_result = tokenize(input);
+//    println!("{:?}", lexer_result);
+//    assert!(lexer_result == vec![
+//        Token::OpenParen,
+//        Token::Number(-1.0),
+//        Token::AddOp,
+//        Token::Number(2.0),
+//        Token::CloseParen,
+//        Token::SubOp,
+//        Token::Number(3.0),
+//        Token::MulOp,
+//        Token::Number(5.0),
+//        Token::DivOp,
+//        Token::Number(5.0),
+//    ]);
+//
+//    let shunting_yard_result = to_postfix_tokens(lexer_result);
+//    println!("{:#?}", shunting_yard_result);
+//    assert!(shunting_yard_result == vec![
+//        Token::Number(-1.0),
+//        Token::Number(2.0),
+//        Token::AddOp,
+//        Token::Number(3.0),
+//        Token::Number(5.0),
+//        Token::Number(5.0),
+//        Token::DivOp,
+//        Token::MulOp,
+//        Token::SubOp,
+//    ]);
+//
+//    let result = calculate(input);
+//    println!("{:?}", result);
+//    assert!(result == "-2")
+//}
 
 
 
