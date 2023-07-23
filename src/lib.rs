@@ -11,18 +11,25 @@ pub fn calculate(input: &str) -> String{
     }
 }
 
+// this or can also use reg expressions to match char as floating point digit [\d.]
+fn is_floating_point_digit(char: char) -> bool{
+    if char.is_ascii_digit() || char == '.'{
+        return true;
+    }
+
+    false
+}
+
 fn tokenize(input: &str) -> Vec<Token>{
-    let mut last_char_was_number = false;
+    //let mut last_char_was_number = false;
     let mut num_string = String::new();
     let mut tokens: Vec<Token> = Vec::new();
     
     for char in input.chars(){
-        // push num_string to tokens and clear num_string if current char is not a valid number character
-        if last_char_was_number && !char.is_ascii_digit() && char != '.'{
-            match num_string.parse(){
-                Ok(val) => tokens.push(Token::Number(val)),
-                _ => {/*numbers validated previously. should not fail to parse.*/}
-            }
+        // can we replace 'last_char_was_number' with '!num_string.is_empty()'? ...seems that we can
+        //if last_char_was_number && !is_floating_point_digit(char){
+        if !num_string.is_empty() && !is_floating_point_digit(char){
+            tokens.push(Token::Number(parse_num_string(&num_string)));
             num_string.clear();
         }
     
@@ -30,7 +37,6 @@ fn tokenize(input: &str) -> Vec<Token>{
             '0'..='9' | '.' => num_string.push(char),
             '+' => tokens.push(Token::AddOp),
             '-' => {
-                // handles '-' as negative rather than subtraction
                 match tokens.last(){
                     // if no previous token, this '-' is a negative sign
                     None => num_string.push(char),
@@ -49,52 +55,63 @@ fn tokenize(input: &str) -> Vec<Token>{
             _ => {}
         }
 
-        last_char_was_number = char.is_ascii_digit() || char == '.';
+        //last_char_was_number = is_floating_point_digit(char);
     }
 
     // push num_string to tokens and clear num_string if we have reached the end of the input string
     if !num_string.is_empty(){
-        match num_string.parse(){
-            Ok(val) => tokens.push(Token::Number(val)),
-            _ => {/*numbers validated previously. should not fail to parse.*/}
-        }
+        tokens.push(Token::Number(parse_num_string(&num_string)));
         num_string.clear();
     }
 
     tokens
 }
 
+fn parse_num_string(num_string: &str) -> f32{
+    // this bit of code is our older style, handled at each location this function is now called
+    //match num_string.parse(){
+    //    Ok(val) => tokens.push(Token::Number(val)),
+    //    _ => {numbers validated previously. should not fail to parse.}
+    //}
+    // end of older code
+    match num_string.parse(){
+        Ok(val) => val,
+        _ => unreachable!("numbers validated previously. should not fail to parse.")
+    }
+}
+
 /// converts tokens to reverse polish/postfix notation
-fn to_postfix_tokens(tokens: Vec<Token>) -> Vec<Token>{
+fn to_postfix_tokens(tokens: Vec<Token>) -> Vec<Token>{ // -> Result<Vec<Token>, Err>
     let mut output = Vec::new();
     let mut operations = Vec::new();
     
     for token in tokens{
         match token{
             Token::Number(_) => output.push(token),
-            Token::OpenParen => operations.push(token),
             Token::CloseParen => {
-                // pushes operations to output, until an opening paren is reached
-                loop{// can infinite loop if no open paren present
+                loop{
                     match operations.last(){
                         Some(&last_token) => {
                             if last_token == Token::OpenParen{
+                                match operations.pop(){
+                                    Some(_) => {},
+                                    None => {println!("missing '(' in operator stack")} // make actual error later
+                                }
                                 break;
                             }
-        
-                            output.push(operations.pop().unwrap());
+                            else{
+                                output.push(operations.pop().unwrap());   
+                            }
                         },
-                        None => {
-                            break;
-                        }
+                        None => break
                     }
                 }
-                match operations.pop(){//.expect("missing '(' in operator stack");
-                    Some(_) => {},
-                    None => {println!("missing '(' in operator stack")} // make actual error later
-                }
             },
-            Token::AddOp | Token::SubOp | Token::MulOp | Token::DivOp => operations.push(token)
+            Token::AddOp | 
+            Token::SubOp | 
+            Token::MulOp | 
+            Token::DivOp | 
+            Token::OpenParen => operations.push(token)
         }
     }
 
@@ -138,9 +155,6 @@ fn evaluate(tokens: Vec<Token>) -> Result<f32, String>{
         }
     }
     
-    // can panic if input is non number characters
-    // create error handling. Result<f32, Box<Error>>
-    //num_stack.pop().unwrap()
     match num_stack.pop(){
         Some(x) => {Ok(x)},
         None => {Err("token stack is empty. cannot evaluate an empty stack. double check that input is numerical and non empty".to_string())}
@@ -233,3 +247,99 @@ fn negatives(){
     println!("result: {:?}", result);
     assert!(result == "4");
 }
+
+// figure out how to make this work properly
+#[test]
+fn twos(){
+    let input = vec![
+        Token::Number(2.0),
+        Token::AddOp,
+        Token::Number(2.0),
+        Token::SubOp,
+        Token::Number(2.0)
+    ];
+    let output = to_postfix_tokens(input);
+    println!("{:#?}", output);
+    assert!(output == vec![
+        Token::Number(2.0),
+        Token::Number(2.0),
+        Token::AddOp,
+        Token::Number(2.0),
+        Token::SubOp
+    ]);
+}
+
+// feature, not a bug. should fail, because i have elected not to assume operator precedence
+// how can we code this so that equal precedence operators don't need parens. ex: 2 + 2 + 2
+#[test]
+#[should_panic]
+fn david_test(){
+    // (-1 + 2) - 3 * 4 / 5
+    let input = vec![
+        Token::OpenParen,
+        Token::Number(-1.0),
+        Token::AddOp,
+        Token::Number(2.0),
+        Token::CloseParen,
+        Token::SubOp,
+        Token::Number(3.0),
+        Token::MulOp,
+        Token::Number(4.0),
+        Token::DivOp,
+        Token::Number(5.0)
+    ];
+    let output = to_postfix_tokens(input);
+    println!("{:#?}", output);
+    assert!(output == vec![
+        Token::Number(-1.0),
+        Token::Number(2.0),
+        Token::AddOp,
+        Token::Number(3.0),
+        Token::SubOp,
+        Token::Number(4.0),
+        Token::MulOp,
+        Token::Number(5.0),
+        Token::DivOp
+    ]);
+}
+
+#[test]
+fn paren_in_paren(){
+    // 9 / ( 3 * (2 + 1))
+    // 9 3 2 1 + * /
+    let input = vec![
+        Token::Number(9.0),
+        Token::DivOp,
+        Token::OpenParen,
+        Token::Number(3.0),
+        Token::MulOp, 
+        Token::OpenParen,
+        Token::Number(2.0),
+        Token::AddOp,
+        Token::Number(1.0),
+        Token::CloseParen,
+        Token::CloseParen
+    ];
+    let output = to_postfix_tokens(input);
+    println!("{:#?}", output);
+    assert!(output == vec![
+        Token::Number(9.0),
+        Token::Number(3.0),
+        Token::Number(2.0),
+        Token::Number(1.0),
+        Token::AddOp,
+        Token::MulOp,
+        Token::DivOp
+    ]);
+}
+
+
+
+// figure out some way to emit an error when input has operators of differing 
+// precedence without parentheses.
+// example: 2 + 4 * 3 ::: error: ambiguous operator precedence. use 
+//                    ::: parentheses to clarify
+// since we don't assume operator precedence, the user must clarify their
+// intent.
+// example: 2 + 4 + 3 would be fine, because they share operator precedence.
+// example: 2 + 4 - 3 would be fine as well, for the same reason.
