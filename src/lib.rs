@@ -21,13 +21,14 @@ pub fn calculate(input: &str) -> String{    // switch to Result<f32, Error> for 
     }
 }
 
+// consider implementing a power ^ operator. remember ^ is right associative
 fn tokenize(input: &str) -> Vec<Token>{
     let mut num_string = String::new();
     let mut tokens: Vec<Token> = Vec::new();
     
     for char in input.chars(){
         if !num_string.is_empty() && !is_floating_point_digit(char){
-            tokens.push(Token::Number(parse_num_string(&num_string)));
+            tokens.push(Token::Number(num_string.parse().unwrap()));
             num_string.clear();
         }
     
@@ -50,13 +51,14 @@ fn tokenize(input: &str) -> Vec<Token>{
             '/' => tokens.push(Token::DivOp),
             '(' => tokens.push(Token::OpenParen),
             ')' => tokens.push(Token::CloseParen),
+            '^' => tokens.push(Token::Power),
             _ => {}
         }
     }
 
     // push num_string to tokens and clear num_string if we have reached the end of the input string
     if !num_string.is_empty(){
-        tokens.push(Token::Number(parse_num_string(&num_string)));
+        tokens.push(Token::Number(num_string.parse().unwrap()));
         num_string.clear();
     }
 
@@ -70,13 +72,6 @@ fn is_floating_point_digit(char: char) -> bool{
     }
     else{
         return false;
-    }
-}
-
-fn parse_num_string(num_string: &str) -> f32{
-    match num_string.parse(){
-        Ok(val) => val,
-        _ => unreachable!("numbers validated previously. should not fail to parse.")
     }
 }
 
@@ -119,7 +114,8 @@ fn to_postfix_tokens(tokens: &[Token]) -> Vec<Token>{
             Token::AddOp | 
             Token::SubOp | 
             Token::MulOp | 
-            Token::DivOp => operations.push(token)
+            Token::DivOp |
+            Token::Power => operations.push(token)
         }
     }
 
@@ -140,24 +136,24 @@ fn evaluate(tokens: Vec<Token>) -> Result<f32, String>{
                 continue;
             },
             Token::AddOp => {
-                let rhs = num_stack.pop().unwrap();
-                let lhs = num_stack.pop().unwrap();
+                let (rhs, lhs) = retrieve_operands(&mut num_stack)?;
                 num_stack.push(lhs + rhs);
             }
             Token::SubOp => {
-                let rhs = num_stack.pop().unwrap();
-                let lhs = num_stack.pop().unwrap();
+                let (rhs, lhs) = retrieve_operands(&mut num_stack)?;
                 num_stack.push(lhs - rhs);
             }
             Token::MulOp => {
-                let rhs = num_stack.pop().unwrap();
-                let lhs = num_stack.pop().unwrap();
+                let (rhs, lhs) = retrieve_operands(&mut num_stack)?;
                 num_stack.push(lhs * rhs);
             }
             Token::DivOp => {
-                let rhs = num_stack.pop().unwrap();
-                let lhs = num_stack.pop().unwrap();
+                let (rhs, lhs) = retrieve_operands(&mut num_stack)?;
                 num_stack.push(lhs / rhs);
+            }
+            Token::Power => {
+                let (rhs, lhs) = retrieve_operands(&mut num_stack)?;
+                num_stack.push(f32::powf(lhs, rhs));
             }
             _ => {}
         }
@@ -165,9 +161,21 @@ fn evaluate(tokens: Vec<Token>) -> Result<f32, String>{
     
     match num_stack.pop(){
         Some(x) => {Ok(x)},
-        // can be reached if input equation is unbalanced. ex: 2 +
-        None => unimplemented!("unimplemented")
+        None => Err("somehow reached a point that is supposed to be unreachable".to_string())
     }
+}
+
+fn retrieve_operands(num_stack: &mut Vec<f32>) -> Result<(f32, f32), String>{
+    let rhs = match num_stack.pop(){
+        Some(val) => {val},
+        None => return Err("could not evaluate equation due to unbalanced operands".to_string())
+    };
+    let lhs = match num_stack.pop(){
+        Some(val) => {val},
+        None => return Err("could not evaluate equation due to unbalanced operands".to_string())
+    };
+
+    Ok((rhs, lhs))
 }
 
 
@@ -326,14 +334,3 @@ fn weird_shit_in_parens(){
     println!("{}", result);
     assert!(result == "9");
 }
-
-
-
-// figure out some way to emit an error when input has operators of differing 
-// precedence without parentheses.
-// example: 2 + 4 * 3 ::: error: ambiguous operator precedence. use 
-//                    ::: parentheses to clarify
-// since we don't assume operator precedence, the user must clarify their
-// intent.
-// example: 2 + 4 + 3 would be fine, because they share operator precedence.
-// example: 2 + 4 - 3 would be fine as well, for the same reason.

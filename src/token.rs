@@ -7,6 +7,7 @@ pub enum Token{
     DivOp,
     OpenParen,
     CloseParen,
+    Power,
 }
 impl std::fmt::Debug for Token{
     fn fmt(self: &Self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result{
@@ -18,6 +19,7 @@ impl std::fmt::Debug for Token{
             Token::DivOp => write!(f, "DivOp"),
             Token::OpenParen => write!(f, "OpenParen"),
             Token::CloseParen => write!(f, "CloseParen"),
+            Token::Power => write!(f, "Power"),
         }
     }
 }
