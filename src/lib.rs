@@ -1,6 +1,7 @@
 //! Command Line Calculator, based on Shunting Yard algorithm.
 //! does not implement order of operations. user should define their own order
-//! of operations using parentheses.
+//! of operations using parentheses. operations will be calculated left to 
+//! right if no precedence is defined
  
 mod token;
 
@@ -13,7 +14,7 @@ pub fn calculate(input: &str) -> String{    // switch to Result<f32, Error> for 
     if tokens.is_empty(){
         return format!("Empty or invalid input string.")
     }
-    let postfix_tokens = to_postfix_tokens(tokens);
+    let postfix_tokens = to_postfix_tokens(&tokens);
     match evaluate(postfix_tokens){
         Ok(ok) => format!("{ok}"),
         Err(e) => format!("{e}")
@@ -79,14 +80,26 @@ fn parse_num_string(num_string: &str) -> f32{
     }
 }
 
-/// converts tokens to reverse polish/postfix notation
-fn to_postfix_tokens(tokens: Vec<Token>) -> Vec<Token>{
+fn to_postfix_tokens(tokens: &[Token]) -> Vec<Token>{
     let mut output = Vec::new();
     let mut operations = Vec::new();
-    
-    for token in tokens{
+
+    for i in 0..tokens.len(){
+        let token = tokens[i];
         match token{
-            Token::Number(_) => output.push(token), 
+            Token::Number(_) => {
+                output.push(token);
+                if !operations.is_empty(){
+                    output.push(operations.pop().unwrap());
+                }
+            }
+            Token::OpenParen => {
+                let result = to_postfix_tokens(&tokens[i+1..tokens.len()]);
+                for idk in result{
+                    output.push(idk);
+                }
+                break;
+            },
             Token::CloseParen => {
                 loop{
                     match operations.last(){
@@ -99,15 +112,14 @@ fn to_postfix_tokens(tokens: Vec<Token>) -> Vec<Token>{
                                 output.push(operations.pop().unwrap());   
                             }
                         },
-                        None => break //inform user of unbalanced paren use?
+                        None => break
                     }
                 }
             },
             Token::AddOp | 
             Token::SubOp | 
             Token::MulOp | 
-            Token::DivOp | 
-            Token::OpenParen => operations.push(token)
+            Token::DivOp => operations.push(token)
         }
     }
 
@@ -171,13 +183,13 @@ fn wiki_test(){
     println!("{:?}", lexer_result);
     assert!(lexer_result == vec![Token::Number(3.0), Token::AddOp, Token::Number(4.0), Token::MulOp, Token::Number(2.0), Token::DivOp, Token::OpenParen, Token::Number(1.0), Token::SubOp, Token::Number(5.0), Token::CloseParen]);
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);
     println!("{:#?}", shunting_yard_result);
-    assert!(shunting_yard_result == vec![Token::Number(3.0), Token::Number(4.0), Token::Number(2.0), Token::MulOp, Token::Number(1.0), Token::Number(5.0), Token::SubOp]);
+    assert!(shunting_yard_result == vec![Token::Number(3.0), Token::Number(4.0), Token::AddOp, Token::Number(2.0), Token::MulOp, Token::Number(1.0), Token::Number(5.0), Token::SubOp, Token::DivOp]);
 
     let result = calculate(input);
     println!("{}", result);
-    assert!(result == "5");
+    assert!(result == "-3.5");
 }
 
 #[test]
@@ -189,7 +201,7 @@ fn integer_operation(){
     println!("lexer result: {:?}", lexer_result);
     assert!(lexer_result == vec![Token::Number(2.0), Token::AddOp, Token::Number(2.0)]);
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);
     println!("shunting yard result: {:?}", shunting_yard_result);
     assert!(shunting_yard_result == vec![Token::Number(2.0), Token::Number(2.0), Token::AddOp]);
 
@@ -207,7 +219,7 @@ fn negatives(){
     println!("lexer result: {:?}", lexer_result);
     assert!(lexer_result == vec![Token::Number(-2.0), Token::MulOp, Token::Number(-2.0)]);
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);
     println!("shunting yard result: {:?}", shunting_yard_result);
     assert!(shunting_yard_result == vec![Token::Number(-2.0), Token::Number(-2.0), Token::MulOp]);
 
@@ -225,7 +237,7 @@ fn balanced_parens(){
     println!("lexer result: {:?}", lexer_result);
     assert!(lexer_result == vec![Token::OpenParen, Token::Number(2.0), Token::AddOp, Token::Number(4.0), Token::CloseParen, Token::MulOp, Token::Number(3.0)]);
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);
     println!("shunting yard result: {:?}", shunting_yard_result);
     assert!(shunting_yard_result == vec![Token::Number(2.0), Token::Number(4.0), Token::AddOp, Token::Number(3.0), Token::MulOp]);
 
@@ -243,7 +255,7 @@ fn paren_in_paren(){
     println!("{:?}", lexer_result);
     assert!(lexer_result == vec![Token::Number(9.0), Token::DivOp, Token::OpenParen, Token::Number(3.0),Token::MulOp, Token::OpenParen, Token::Number(2.0), Token::AddOp, Token::Number(1.0), Token::CloseParen, Token::CloseParen]);
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);
     println!("{:#?}", shunting_yard_result);
     assert!(shunting_yard_result == vec![Token::Number(9.0), Token::Number(3.0), Token::Number(2.0), Token::Number(1.0), Token::AddOp, Token::MulOp, Token::DivOp]);
 
@@ -252,8 +264,6 @@ fn paren_in_paren(){
     assert!(result == "1");
 }
 
-// may need to implement precedence
-// better test is 2 - 3 + 4. expect 3, result is -5
 #[test]
 fn left_to_right_solving(){
     let input = "2 - 3 + 4";
@@ -263,7 +273,7 @@ fn left_to_right_solving(){
     println!("{:?}", lexer_result);
     assert!(lexer_result == vec![Token::Number(2.0), Token::SubOp, Token::Number(3.0), Token::AddOp, Token::Number(4.0)]);
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);//to_postfix_tokens(lexer_result);
     println!("{:#?}", shunting_yard_result);
     assert!(shunting_yard_result == vec![Token::Number(2.0), Token::Number(3.0), Token::SubOp, Token::Number(4.0), Token::AddOp]);
 
@@ -280,45 +290,23 @@ fn idk(){
 }
 
 // reconsider this test once previous is working correctly
-//#[test]
-//fn david_test(){
-//    let input = "(-1 + 2) - 3 * 5 / 5";
-//    println!("{:?}", input);
-//
-//    let lexer_result = tokenize(input);
-//    println!("{:?}", lexer_result);
-//    assert!(lexer_result == vec![
-//        Token::OpenParen,
-//        Token::Number(-1.0),
-//        Token::AddOp,
-//        Token::Number(2.0),
-//        Token::CloseParen,
-//        Token::SubOp,
-//        Token::Number(3.0),
-//        Token::MulOp,
-//        Token::Number(5.0),
-//        Token::DivOp,
-//        Token::Number(5.0),
-//    ]);
-//
-//    let shunting_yard_result = to_postfix_tokens(lexer_result);
-//    println!("{:#?}", shunting_yard_result);
-//    assert!(shunting_yard_result == vec![
-//        Token::Number(-1.0),
-//        Token::Number(2.0),
-//        Token::AddOp,
-//        Token::Number(3.0),
-//        Token::Number(5.0),
-//        Token::Number(5.0),
-//        Token::DivOp,
-//        Token::MulOp,
-//        Token::SubOp,
-//    ]);
-//
-//    let result = calculate(input);
-//    println!("{:?}", result);
-//    assert!(result == "-2")
-//}
+#[test]
+fn david_test(){
+    let input = "(-1 + 2) - 3 * 5 / 5";
+    println!("{:?}", input);
+
+    let lexer_result = tokenize(input);
+    println!("{:?}", lexer_result);
+    assert!(lexer_result == vec![Token::OpenParen, Token::Number(-1.0), Token::AddOp, Token::Number(2.0), Token::CloseParen, Token::SubOp, Token::Number(3.0), Token::MulOp, Token::Number(5.0), Token::DivOp, Token::Number(5.0)]);
+
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);
+    println!("{:#?}", shunting_yard_result);
+    assert!(shunting_yard_result == vec![Token::Number(-1.0), Token::Number(2.0), Token::AddOp, Token::Number(3.0), Token::SubOp, Token::Number(5.0), Token::MulOp, Token::Number(5.0), Token::DivOp]);
+
+    let result = calculate(input);
+    println!("{:?}", result);
+    assert!(result == "-2")
+}
 
 #[test]
 fn weird_shit_in_parens(){
@@ -329,7 +317,7 @@ fn weird_shit_in_parens(){
     println!("{:?}", lexer_result);
     //assert!(lexer_result == vec!)
 
-    let shunting_yard_result = to_postfix_tokens(lexer_result);
+    let shunting_yard_result = to_postfix_tokens(&lexer_result);//to_postfix_tokens(lexer_result);
     println!("{:?}", shunting_yard_result);
     //2 3 1 - 5 + +
     assert!(shunting_yard_result == vec![Token::Number(2.0), Token::Number(3.0), Token::Number(1.0), Token::SubOp, Token::Number(5.0), Token::AddOp, Token::AddOp]);
